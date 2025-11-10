@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>名市大ドライブGOGO - プロトタイプ</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Interフォントの読み込み -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons (React用ではなく、UMD版のlucide本体を読み込むように修正) -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans JP', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            DEFAULT: '#00A7C7', // 仕様書に合わせて調整可能
+                            dark: '#0089A1',
+                        },
+                        secondary: '#F5A623', // オレンジ
+                        ncu: { // 名古屋市立大学のテーマカラー（仮）
+                            green: '#006A5C',
+                            yellow: '#FDB813',
+                        }
+                    },
+                },
+            },
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', 'sans-serif';
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        main {
+            flex-grow: 1;
+            /* iPhoneのノッチや下部バーとの干渉を避けるためのパディング */
+            padding-bottom: 90px; 
+        }
+        /* 画面切り替え用のスタイル */
+        .screen {
+            display: none; /* 初期状態は非表示 */
+        }
+        .screen.active {
+            display: block; /* .activeクラスが付いたら表示 */
+        }
+        /* フッター固定 */
+        #app-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+        /* モーダル（詳細画面など） */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 200;
+            overflow-y: auto;
+        }
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- ヘッダー -->
+    <header class="bg-white shadow-md sticky top-0 z-50">
+        <nav class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="text-xl font-bold text-ncu-green">
+                名市大ドライブGOGO
+            </div>
+            <button id="login-nav-btn" class="bg-ncu-green text-white font-semibold px-4 py-2 rounded-lg hover:bg-opacity-90 transition duration-300">
+                ログイン
+            </button>
+        </nav>
+    </header>
+
+    <!-- メインコンテンツ (画面切り替えコンテナ) -->
+    <main class="container mx-auto">
+
+        <!-- 画面2：メイン（マップ・車両検索） -->
+        <section id="screen-home" class="screen active p-4">
+            <!-- 検索窓 -->
+            <div class="bg-white p-4 rounded-xl shadow-lg mb-4">
+                <div class="mb-3">
+                    <label class="block text-sm font-semibold text-gray-600 mb-1">利用開始</label>
+                    <input type="datetime-local" class="w-full p-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-600 mb-1">利用終了</label>
+                    <input type="datetime-local" class="w-full p-2 border border-gray-300 rounded-lg">
+                </div>
+            </div>
+
+            <!-- タブ切り替え -->
+            <div class="flex mb-4 bg-gray-200 rounded-lg p-1">
+                <button class="tab-btn flex-1 p-2 rounded-lg bg-white shadow font-semibold" data-target="map-cars">車両</button>
+                <button class="tab-btn flex-1 p-2 rounded-lg text-gray-600" data-target="map-sponsors">協賛店</button>
+            </div>
+
+            <!-- マップ表示エリア -->
+            <div id="map-cars" class="map-content">
+                <div class="w-full h-64 bg-gray-300 rounded-xl shadow-inner flex items-center justify-center text-gray-500 mb-4">
+                    
+                    <p class="text-lg">(マップ表示エリア)</p>
+                </div>
+                <!-- 車両リスト -->
+                <h3 class="text-lg font-semibold mb-2">利用可能な車両</h3>
+                <div id="car-list">
+                    <!-- 車両カード (クリックで詳細へ) -->
+                    <div class="bg-white p-4 rounded-xl shadow-lg mb-3 flex items-center space-x-4 cursor-pointer hover:bg-gray-50" 
+                         onclick="showModal('modal-vehicle-detail')">
+                        <img src="https://placehold.co/100x70/00A7C7/FFFFFF?text=アクア" alt="アクア" class="w-24 rounded-lg">
+                        <div>
+                            <h4 class="text-lg font-bold">トヨタ アクア</h4>
+                            <p class="text-sm text-gray-600">滝子キャンパス・ステーション</p>
+                            <p class="text-sm font-semibold text-primary mt-1">500円/1時間〜</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="map-sponsors" class="map-content hidden">
+                <div class="w-full h-64 bg-gray-300 rounded-xl shadow-inner flex items-center justify-center text-gray-500 mb-4">
+                    
+                    <p class="text-lg">(協賛店マップエリア)</p>
+                </div>
+                <p class="text-center text-gray-700">協賛店がマップに表示されます。</p>
+            </div>
+
+        </section>
+
+        <!-- 画面5：スタンプラリー -->
+        <section id="screen-stamp" class="screen p-4">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">スタンプラリー</h2>
+            <!-- スタンプラリータブ -->
+            <div class="flex mb-4 bg-gray-200 rounded-lg p-1">
+                <button class="stamp-tab-btn flex-1 p-2 rounded-lg bg-white shadow font-semibold" data-target="stamp-card">スタンプ台紙</button>
+                <button class="stamp-tab-btn flex-1 p-2 rounded-lg text-gray-600" data-target="sponsor-list">協賛店リスト</button>
+            </div>
+
+            <!-- スタンプ台紙 -->
+            <div id="stamp-card" class="stamp-content">
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <p class="text-lg mb-4">現在のスタンプ: <span class="font-bold text-primary text-2xl">2</span> / 9 個</p>
+                    <!-- 3x3 グリッド -->
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <!-- スタンプ (獲得済み) -->
+                        <div class="aspect-square bg-ncu-yellow rounded-lg flex items-center justify-center shadow-inner">
+                            <i data-lucide="check-circle" class="w-10 h-10 text-white"></i>
+                        </div>
+                        <!-- スタンプ (獲得済み) -->
+                        <div class="aspect-square bg-ncu-yellow rounded-lg flex items-center justify-center shadow-inner">
+                            <i data-lucide="check-circle" class="w-10 h-10 text-white"></i>
+                        </div>
+                        <!-- スタンプ (空) -->
+                        <div class="aspect-square bg-gray-200 rounded-lg flex items-center justify-center">
+                            <i data-lucide="scan-line" class="w-10 h-10 text-gray-400"></i>
+                        </div>
+                        <!-- 他のスタンプ -->
+                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
+                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
+                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
+                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
+                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
+                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-4">コンプリートで「生協500円券」ゲット！</p>
+                    <button class="w-full bg-secondary text-white font-bold text-lg py-3 rounded-lg hover:opacity-90 transition duration-300 flex items-center justify-center space-x-2">
+                        <i data-lucide="qr-code"></i>
+                        <span>スタンプを読み取る (QR)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 協賛店リスト -->
+            <div id="sponsor-list" class="stamp-content hidden">
+                <!-- (協賛店リストのUI) -->
+                <div class="bg-white p-4 rounded-xl shadow-lg mb-3">
+                    <h4 class="font-bold text-lg">カフェ・ド・シロヤマ</h4>
+                    <p class="text-sm text-gray-600">特典: ドリンク1杯 50円引き</p>
+                    <p class="text-xs text-gray-500 mt-1">カテゴリ: 飲食店</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-lg mb-3">
+                    <h4 class="font-bold text-lg">瑞穂書店</h4>
+                    <p class="text-sm text-gray-600">特典: 雑誌・書籍 5% OFF</p>
+                    <p class="text-xs text-gray-500 mt-1">カテゴリ: 書店</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 画面6：マイページ -->
+        <section id="screen-mypage" class="screen p-4">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">マイページ</h2>
+            
+            <!-- ユーザー情報 -->
+            <div class="bg-white p-6 rounded-xl shadow-lg mb-6 text-center">
+                <i data-lucide="user-circle" class="w-20 h-20 text-gray-400 mx-auto mb-3"></i>
+                <h3 class="text-xl font-bold">名市大 太郎</h3>
+                <p class="text-gray-500">一般会員</p>
+            </div>
+
+            <!-- メニューリスト -->
+            <div class="space-y-3">
+                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
+                    <span class="font-semibold">お知らせ</span>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
+                </a>
+                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
+                    <span class="font-semibold">利用履歴</span>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
+                </a>
+                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
+                    <span class="font-semibold">獲得クーポン一覧</span>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
+                </a>
+                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
+                    <span class="font-semibold">登録情報変更</span>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
+                </a>
+                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
+                    <span class="font-semibold">お問い合わせ (事故・トラブル)</span>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
+                </a>
+                <button class="w-full text-left text-red-600 font-semibold bg-white p-4 rounded-lg shadow hover:bg-red-50 transition mt-4">
+                    ログアウト
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- フッター (アプリ内ナビゲーション) -->
+    <footer id="app-footer" class="bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <nav class="container mx-auto px-4 py-3 flex justify-around">
+            <button class="nav-btn p-2 flex flex-col items-center text-primary" data-screen="screen-home">
+                <i data-lucide="map" class="w-6 h-6 mb-1"></i>
+                <span class="text-xs font-semibold">ホーム</span>
+            </button>
+            <button class="nav-btn p-2 flex flex-col items-center text-gray-500" data-screen="screen-stamp">
+                <i data-lucide="scan-line" class="w-6 h-6 mb-1"></i>
+                <span class="text-xs font-semibold">スタンプ</span>
+            </button>
+            <button class="nav-btn p-2 flex flex-col items-center text-gray-500" data-screen="screen-mypage">
+                <i data-lucide="user" class="w-6 h-6 mb-1"></i>
+                <span class="text-xs font-semibold">マイページ</span>
+            </button>
+        </nav>
+    </footer>
+
+    <!-- ===== モーダルエリア ===== -->
+    
+    <!-- 画面1：ログイン / 新規登録 (モーダル) -->
+    <div id="modal-login" class="modal">
+        <div class="modal-content p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-ncu-green">ログイン</h2>
+                <button onclick="closeModal('modal-login')"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-1">メールアドレス</label>
+                    <input type="email" placeholder="xxx@nagoya-cu.ac.jp" class="w-full p-3 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1">パスワード</label>
+                    <input type="password" class="w-full p-3 border rounded-lg">
+                </div>
+                <button class="w-full bg-ncu-green text-white font-bold py-3 rounded-lg">ログイン</button>
+                <div class="text-center space-y-2 pt-2">
+                    <a href="#" class="text-sm text-primary hover:underline">新規会員登録はこちら</a>
+                    <br>
+                    <a href="#" class="text-sm text-gray-500 hover:underline">パスワードを忘れた場合</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 画面3：車両詳細 / 予約 (モーダル) -->
+    <div id="modal-vehicle-detail" class="modal">
+        <div class="modal-content">
+            <div class="relative">
+                <img src="https://placehold.co/500x300/00A7C7/FFFFFF?text=アクア" alt="アクア" class="w-full rounded-t-lg">
+                <button onclick="closeModal('modal-vehicle-detail')" class="absolute top-3 right-3 bg-black bg-opacity-50 text-white rounded-full p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <h2 class="text-2xl font-bold mb-2">トヨタ アクア</h2>
+                <p class="text-gray-600 mb-4">滝子キャンパス・ステーション</p>
+                <div class="flex space-x-4 mb-4 text-sm text-gray-700">
+                    <span><i data-lucide="navigation" class="w-4 h-4 inline-block mr-1"></i> ナビ</span>
+                    <span><i data-lucide="credit-card" class="w-4 h-4 inline-block mr-1"></i> ETC</span>
+                </div>
+                
+                <h3 class="text-lg font-semibold mb-3">料金プラン選択</h3>
+                <div class="space-y-3 mb-6">
+                    <label class="block p-4 border rounded-lg cursor-pointer hover:border-primary">
+                        <input type="radio" name="plan" class="mr-2">
+                        <strong>6時間パック:</strong> <span class="text-lg font-bold text-primary">2,200円</span> (推奨)
+                    </label>
+                    <label class="block p-4 border rounded-lg cursor-pointer hover:border-primary">
+                        <input type="radio" name="plan" class="mr-2">
+                        <strong>12時間パック:</strong> <span class="text-lg font-bold">2,900円</span>
+                    </label>
+                    <label class="block p-4 border rounded-lg cursor-pointer hover:border-primary">
+                        <input type="radio" name="plan" class="mr-2">
+                        <strong>1時間:</strong> <span class="text-lg font-bold">500円</span>
+                    </label>
+                </div>
+                <button class="w-full bg-secondary text-white font-bold text-lg py-3 rounded-lg"
+                        onclick="showModal('modal-booking-confirm'); closeModal('modal-vehicle-detail')">
+                    この内容で予約する
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 画面4：予約完了 / 利用中 (モーダル) -->
+    <div id="modal-booking-confirm" class="modal">
+        <div class="modal-content p-6 text-center">
+            <button onclick="closeModal('modal-booking-confirm')" class="absolute top-3 right-3 text-gray-500">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+            <i data-lucide="check-circle" class="w-20 h-20 text-green-500 mx-auto mb-4"></i>
+            <h2 class="text-2xl font-bold mb-4">予約が完了しました！</h2>
+            <p class="text-gray-600 mb-6">利用時間になりましたら、以下の暗証番号でキーボックスを開けてください。</p>
+            
+            <div class="bg-gray-100 p-6 rounded-lg mb-6">
+                <p class="text-sm text-gray-500">キーボックス暗証番号</p>
+                <p class="text-4xl font-bold tracking-widest text-gray-800 my-2">1 2 3 4</p>
+            </div>
+            
+            <button class="w-full bg-primary text-white font-bold py-3 rounded-lg mb-3">利用を開始する</button>
+            <button class="w-full text-sm text-red-600">予約をキャンセルする</button>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Lucideアイコンの初期化
+            lucide.createIcons();
+
+            const navButtons = document.querySelectorAll('.nav-btn');
+            const screens = document.querySelectorAll('.screen');
+            const modals = document.querySelectorAll('.modal');
+
+            // --- フッターナビゲーション (画面切り替え) ---
+            navButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const targetScreenId = button.dataset.screen;
+
+                    // 全ての画面を非表示
+                    screens.forEach(screen => {
+                        screen.classList.remove('active');
+                    });
+                    // 対象の画面を表示
+                    document.getElementById(targetScreenId).classList.add('active');
+
+                    // ボタンのアクティブ状態を切り替え
+                    navButtons.forEach(btn => btn.classList.add('text-gray-500'));
+                    navButtons.forEach(btn => btn.classList.remove('text-primary'));
+                    button.classList.add('text-primary');
+                    button.classList.remove('text-gray-500');
+                });
+            });
+
+            // --- モーダル (ログイン/詳細/予約) ---
+            // ログインボタン
+            document.getElementById('login-nav-btn').addEventListener('click', () => {
+                showModal('modal-login');
+            });
+            
+            // モーダルを閉じる (背景クリック)
+            modals.forEach(modal => {
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        closeModal(modal.id);
+                    }
+                });
+            });
+
+            // --- ホーム画面 (車両/協賛店タブ) ---
+            const homeTabs = document.querySelectorAll('.tab-btn');
+            const mapContents = document.querySelectorAll('.map-content');
+
+            homeTabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetMapId = tab.dataset.target;
+                    
+                    mapContents.forEach(content => content.classList.add('hidden'));
+                    document.getElementById(targetMapId).classList.remove('hidden');
+
+                    homeTabs.forEach(t => t.classList.remove('bg-white', 'shadow', 'font-semibold'));
+                    homeTabs.forEach(t => t.classList.add('text-gray-600'));
+                    tab.classList.add('bg-white', 'shadow', 'font-semibold');
+                    tab.classList.remove('text-gray-600');
+                });
+            });
+
+             // --- スタンプラリー画面 (台紙/リストタブ) ---
+            const stampTabs = document.querySelectorAll('.stamp-tab-btn');
+            const stampContents = document.querySelectorAll('.stamp-content');
+
+            stampTabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetContentId = tab.dataset.target;
+                    
+                    stampContents.forEach(content => content.classList.add('hidden'));
+                    document.getElementById(targetContentId).classList.remove('hidden');
+
+                    stampTabs.forEach(t => t.classList.remove('bg-white', 'shadow', 'font-semibold'));
+                    stampTabs.forEach(t => t.classList.add('text-gray-600'));
+                    tab.classList.add('bg-white', 'shadow', 'font-semibold');
+                    tab.classList.remove('text-gray-600');
+                });
+            });
+
+        });
+
+        // --- グローバル関数 (モーダル制御) ---
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+    </script>
+
+</body>
+</html>
