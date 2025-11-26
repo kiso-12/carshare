@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>名市大ドライブGOGO - プロトタイプ</title>
-    <!-- Tailwind CSS CDN -->
+    <title>名市大ドライブGOGO - Ver11.0</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Interフォントの読み込み -->
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
-    <!-- Lucide Icons (React用ではなく、UMD版のlucide本体を読み込むように修正) -->
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- Leaflet CSS (地図用) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <script>
         tailwind.config = {
             theme: {
@@ -19,11 +22,11 @@
                     },
                     colors: {
                         primary: {
-                            DEFAULT: '#00A7C7', // 仕様書に合わせて調整可能
+                            DEFAULT: '#00A7C7', 
                             dark: '#0089A1',
                         },
-                        secondary: '#F5A623', // オレンジ
-                        ncu: { // 名古屋市立大学のテーマカラー（仮）
+                        secondary: '#F5A623',
+                        ncu: {
                             green: '#006A5C',
                             yellow: '#FDB813',
                         }
@@ -33,426 +36,1132 @@
         };
     </script>
     <style>
-        body {
-            font-family: 'Inter', 'Noto Sans JP', 'sans-serif';
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
+        body { font-family: 'Inter', 'Noto Sans JP', 'sans-serif'; height: 100vh; display: flex; flex-direction: column; }
+        main { flex-grow: 1; padding-bottom: 90px; overflow-y: auto; }
+        .screen { display: none; }
+        .screen.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+        #app-footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; }
+        
+        /* モーダル関連 */
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: end; }
+        @media (min-width: 640px) { .modal { align-items: center; } }
+        
+        .modal.active { display: flex; animation: fadeIn 0.2s; }
+        .modal-content { background: white; border-radius: 20px 20px 0 0; width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; position: relative; padding-bottom: 20px;}
+        @media (min-width: 640px) { .modal-content { border-radius: 12px; width: 90%; } }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* 地図の高さ調整 */
+        #map-container { height: 250px; z-index: 1; }
+
+        /* スケジュールバー */
+        .schedule-bar { height: 24px; border-radius: 4px; overflow: hidden; display: flex; background: #e5e7eb; position: relative; }
+        .schedule-segment { height: 100%; }
+        .schedule-segment.booked { background-color: #ef4444; } 
+        .schedule-segment.selected { background-color: #3b82f6; opacity: 0.8; } 
+        .schedule-label { position: absolute; bottom: -20px; font-size: 10px; color: #6b7280; transform: translateX(-50%); }
+
+        /* カレンダー用スタイル */
+        .calendar-cell { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 8px; font-size: 12px; }
+        .calendar-cell.today { background-color: #ecfdf5; border: 2px solid #006A5C; font-weight: bold; }
+        .status-mark { font-size: 14px; font-weight: bold; margin-top: 2px; }
+        .status-ok { color: #00A7C7; } 
+        .status-few { color: #F5A623; } 
+        .status-full { color: #ef4444; } 
+
+        /* クーポン券スタイル */
+        .coupon-ticket {
+            background: radial-gradient(circle at left, transparent 10px, #fff 10px) left,
+                        radial-gradient(circle at right, transparent 10px, #fff 10px) right;
+            background-size: 51% 100%;
+            background-repeat: no-repeat;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
         }
-        main {
-            flex-grow: 1;
-            /* iPhoneのノッチや下部バーとの干渉を避けるためのパディング */
-            padding-bottom: 90px; 
-        }
-        /* 画面切り替え用のスタイル */
-        .screen {
-            display: none; /* 初期状態は非表示 */
-        }
-        .screen.active {
-            display: block; /* .activeクラスが付いたら表示 */
-        }
-        /* フッター固定 */
-        #app-footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 100;
-        }
-        /* モーダル（詳細画面など） */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0,0,0,0.5);
-            z-index: 200;
-            overflow-y: auto;
-        }
-        .modal.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 500px;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
+
+        /* スタンプスタイル */
+        .stamp-cell { position: relative; }
+        .stamp-date { font-size: 10px; font-weight: bold; color: #006A5C; margin-top: -4px; background: rgba(255,255,255,0.8); padding: 0 4px; border-radius: 4px; }
     </style>
 </head>
-<body class="bg-gray-100">
+<body class="bg-gray-50 text-gray-800">
 
     <!-- ヘッダー -->
-    <header class="bg-white shadow-md sticky top-0 z-50">
-        <nav class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="text-xl font-bold text-ncu-green">
-                名市大ドライブGOGO
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <nav class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="car-front" class="text-ncu-green"></i>
+                <div class="text-lg font-bold text-ncu-green tracking-tight">
+                    名市大ドライブ<span class="text-secondary">GOGO</span>
+                </div>
             </div>
-            <button id="login-nav-btn" class="bg-ncu-green text-white font-semibold px-4 py-2 rounded-lg hover:bg-opacity-90 transition duration-300">
+            <button id="login-btn" class="text-sm bg-ncu-green text-white font-semibold px-4 py-2 rounded-full hover:bg-opacity-90 transition shadow-sm">
                 ログイン
             </button>
         </nav>
     </header>
 
-    <!-- メインコンテンツ (画面切り替えコンテナ) -->
-    <main class="container mx-auto">
+    <!-- メインコンテンツ -->
+    <main class="container mx-auto relative">
 
-        <!-- 画面2：メイン（マップ・車両検索） -->
+        <!-- 画面：ホーム -->
         <section id="screen-home" class="screen active p-4">
-            <!-- 検索窓 -->
-            <div class="bg-white p-4 rounded-xl shadow-lg mb-4">
-                <div class="mb-3">
-                    <label class="block text-sm font-semibold text-gray-600 mb-1">利用開始</label>
-                    <input type="datetime-local" class="w-full p-2 border border-gray-300 rounded-lg">
+            <!-- 利用中ステータスパネル (初期非表示) -->
+            <div id="active-booking-panel" class="hidden bg-ncu-green text-white p-4 rounded-xl shadow-lg mb-6 border-l-4 border-secondary">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-bold flex items-center"><i data-lucide="key" class="w-5 h-5 mr-2"></i>利用中</h3>
+                    <span class="text-xs bg-white text-ncu-green px-2 py-1 rounded font-bold">返却待ち</span>
                 </div>
-                <div>
-                    <label class="block text-sm font-semibold text-gray-600 mb-1">利用終了</label>
-                    <input type="datetime-local" class="w-full p-2 border border-gray-300 rounded-lg">
-                </div>
-            </div>
-
-            <!-- タブ切り替え -->
-            <div class="flex mb-4 bg-gray-200 rounded-lg p-1">
-                <button class="tab-btn flex-1 p-2 rounded-lg bg-white shadow font-semibold" data-target="map-cars">車両</button>
-                <button class="tab-btn flex-1 p-2 rounded-lg text-gray-600" data-target="map-sponsors">協賛店</button>
-            </div>
-
-            <!-- マップ表示エリア -->
-            <div id="map-cars" class="map-content">
-                <div class="w-full h-64 bg-gray-300 rounded-xl shadow-inner flex items-center justify-center text-gray-500 mb-4">
-                    
-                    <p class="text-lg">(マップ表示エリア)</p>
-                </div>
-                <!-- 車両リスト -->
-                <h3 class="text-lg font-semibold mb-2">利用可能な車両</h3>
-                <div id="car-list">
-                    <!-- 車両カード (クリックで詳細へ) -->
-                    <div class="bg-white p-4 rounded-xl shadow-lg mb-3 flex items-center space-x-4 cursor-pointer hover:bg-gray-50" 
-                         onclick="showModal('modal-vehicle-detail')">
-                        <img src="https://placehold.co/100x70/00A7C7/FFFFFF?text=アクア" alt="アクア" class="w-24 rounded-lg">
-                        <div>
-                            <h4 class="text-lg font-bold">トヨタ アクア</h4>
-                            <p class="text-sm text-gray-600">滝子キャンパス・ステーション</p>
-                            <p class="text-sm font-semibold text-primary mt-1">500円/1時間〜</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="map-sponsors" class="map-content hidden">
-                <div class="w-full h-64 bg-gray-300 rounded-xl shadow-inner flex items-center justify-center text-gray-500 mb-4">
-                    
-                    <p class="text-lg">(協賛店マップエリア)</p>
-                </div>
-                <p class="text-center text-gray-700">協賛店がマップに表示されます。</p>
-            </div>
-
-        </section>
-
-        <!-- 画面5：スタンプラリー -->
-        <section id="screen-stamp" class="screen p-4">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">スタンプラリー</h2>
-            <!-- スタンプラリータブ -->
-            <div class="flex mb-4 bg-gray-200 rounded-lg p-1">
-                <button class="stamp-tab-btn flex-1 p-2 rounded-lg bg-white shadow font-semibold" data-target="stamp-card">スタンプ台紙</button>
-                <button class="stamp-tab-btn flex-1 p-2 rounded-lg text-gray-600" data-target="sponsor-list">協賛店リスト</button>
-            </div>
-
-            <!-- スタンプ台紙 -->
-            <div id="stamp-card" class="stamp-content">
-                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
-                    <p class="text-lg mb-4">現在のスタンプ: <span class="font-bold text-primary text-2xl">2</span> / 9 個</p>
-                    <!-- 3x3 グリッド -->
-                    <div class="grid grid-cols-3 gap-4 mb-6">
-                        <!-- スタンプ (獲得済み) -->
-                        <div class="aspect-square bg-ncu-yellow rounded-lg flex items-center justify-center shadow-inner">
-                            <i data-lucide="check-circle" class="w-10 h-10 text-white"></i>
-                        </div>
-                        <!-- スタンプ (獲得済み) -->
-                        <div class="aspect-square bg-ncu-yellow rounded-lg flex items-center justify-center shadow-inner">
-                            <i data-lucide="check-circle" class="w-10 h-10 text-white"></i>
-                        </div>
-                        <!-- スタンプ (空) -->
-                        <div class="aspect-square bg-gray-200 rounded-lg flex items-center justify-center">
-                            <i data-lucide="scan-line" class="w-10 h-10 text-gray-400"></i>
-                        </div>
-                        <!-- 他のスタンプ -->
-                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
-                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
-                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
-                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
-                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
-                        <div class="aspect-square bg-gray-200 rounded-lg"></div>
-                    </div>
-                    <p class="text-sm text-gray-600 mb-4">コンプリートで「生協500円券」ゲット！</p>
-                    <button class="w-full bg-secondary text-white font-bold text-lg py-3 rounded-lg hover:opacity-90 transition duration-300 flex items-center justify-center space-x-2">
-                        <i data-lucide="qr-code"></i>
-                        <span>スタンプを読み取る (QR)</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- 協賛店リスト -->
-            <div id="sponsor-list" class="stamp-content hidden">
-                <!-- (協賛店リストのUI) -->
-                <div class="bg-white p-4 rounded-xl shadow-lg mb-3">
-                    <h4 class="font-bold text-lg">カフェ・ド・シロヤマ</h4>
-                    <p class="text-sm text-gray-600">特典: ドリンク1杯 50円引き</p>
-                    <p class="text-xs text-gray-500 mt-1">カテゴリ: 飲食店</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl shadow-lg mb-3">
-                    <h4 class="font-bold text-lg">瑞穂書店</h4>
-                    <p class="text-sm text-gray-600">特典: 雑誌・書籍 5% OFF</p>
-                    <p class="text-xs text-gray-500 mt-1">カテゴリ: 書店</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- 画面6：マイページ -->
-        <section id="screen-mypage" class="screen p-4">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">マイページ</h2>
-            
-            <!-- ユーザー情報 -->
-            <div class="bg-white p-6 rounded-xl shadow-lg mb-6 text-center">
-                <i data-lucide="user-circle" class="w-20 h-20 text-gray-400 mx-auto mb-3"></i>
-                <h3 class="text-xl font-bold">名市大 太郎</h3>
-                <p class="text-gray-500">一般会員</p>
-            </div>
-
-            <!-- メニューリスト -->
-            <div class="space-y-3">
-                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
-                    <span class="font-semibold">お知らせ</span>
-                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
-                </a>
-                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
-                    <span class="font-semibold">利用履歴</span>
-                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
-                </a>
-                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
-                    <span class="font-semibold">獲得クーポン一覧</span>
-                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
-                </a>
-                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
-                    <span class="font-semibold">登録情報変更</span>
-                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
-                </a>
-                <a href="#" class="flex justify-between items-center bg-white p-4 rounded-lg shadow hover:bg-gray-50 transition">
-                    <span class="font-semibold">お問い合わせ (事故・トラブル)</span>
-                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
-                </a>
-                <button class="w-full text-left text-red-600 font-semibold bg-white p-4 rounded-lg shadow hover:bg-red-50 transition mt-4">
-                    ログアウト
+                <p id="active-car-name" class="text-lg font-bold mb-1">車種名</p>
+                <p class="text-sm opacity-90 mb-4">終了予定: <span id="active-end-time" class="font-mono text-lg">15:00</span></p>
+                
+                <button onclick="openReturnModal()" class="w-full bg-white text-ncu-green font-bold py-3 rounded-lg shadow hover:bg-gray-100 transition flex items-center justify-center">
+                    <i data-lucide="log-out" class="w-5 h-5 mr-2"></i>
+                    返却手続きへ
                 </button>
             </div>
+
+            <!-- マップ -->
+            <div class="mb-2 flex items-center justify-between px-1">
+                <h3 class="text-sm font-bold text-gray-600 flex items-center">
+                    <i data-lucide="map" class="w-4 h-4 mr-1"></i>お出かけスポット
+                </h3>
+                <span class="text-xs text-gray-400">ピンをタップして詳細を確認</span>
+            </div>
+            <div id="map-container" class="rounded-xl shadow-md overflow-hidden mb-6 border border-gray-200"></div>
+
+            <!-- 週間予約状況パネル -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-bold text-gray-800 flex items-center">
+                        <i data-lucide="calendar-days" class="w-5 h-5 mr-2 text-primary"></i>週間予約状況
+                    </h3>
+                    <button onclick="openMonthlyCalendar()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold px-3 py-1.5 rounded-full transition flex items-center">
+                        <i data-lucide="calendar" class="w-3 h-3 mr-1"></i>月間カレンダー
+                    </button>
+                </div>
+                <div class="overflow-x-auto pb-2">
+                    <table class="w-full min-w-[350px] text-sm text-center">
+                        <thead>
+                            <tr id="weekly-header-row" class="text-gray-500 border-b border-gray-100">
+                                <th class="pb-2 text-left pl-2 font-normal text-xs w-20">車両</th>
+                                <!-- JSで生成 -->
+                            </tr>
+                        </thead>
+                        <tbody id="weekly-body-rows" class="text-gray-700">
+                            <!-- JSで生成 -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="flex justify-end gap-3 mt-2 text-[10px] text-gray-400">
+                    <span class="flex items-center"><span class="status-ok mr-1">◎</span>余裕あり</span>
+                    <span class="flex items-center"><span class="status-few mr-1">△</span>残りわずか</span>
+                    <span class="flex items-center"><span class="status-full mr-1">×</span>満車</span>
+                </div>
+            </div>
+
+            <!-- 車両リスト -->
+            <div id="view-cars">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 px-1 flex items-center">
+                    <i data-lucide="list" class="w-5 h-5 mr-2 text-primary"></i>利用可能な車両
+                </h3>
+                <p class="text-xs text-gray-500 mb-3 px-1">※車両はすべて滝子キャンパス内にあります</p>
+                <div id="car-list-container" class="space-y-4 pb-20">
+                    <!-- JSで生成 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 画面：スタンプラリー -->
+        <section id="screen-stamp" class="screen p-4">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <i data-lucide="award" class="mr-2 text-secondary"></i>スタンプラリー
+            </h2>
+            <div class="bg-gradient-to-br from-ncu-green to-teal-800 p-6 rounded-2xl shadow-lg text-white text-center mb-6 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                <p class="text-sm opacity-90 mb-1 relative z-10">現在の獲得数</p>
+                <div class="text-5xl font-bold mb-2 relative z-10"><span id="stamp-count">2</span><span class="text-2xl ml-1 font-normal">/ 9</span></div>
+                <div class="w-full bg-black/20 rounded-full h-2 mb-3 relative z-10">
+                    <div class="bg-secondary h-2 rounded-full" style="width: 22%"></div>
+                </div>
+                <p class="text-xs opacity-90 relative z-10 font-bold mb-4">あと7つでコンプリート！</p>
+                <button onclick="openRewardModal()" class="w-full bg-white text-ncu-green text-sm font-bold py-2 rounded-lg shadow hover:bg-gray-100 transition flex items-center justify-center relative z-10">
+                    <i data-lucide="gift" class="w-4 h-4 mr-2"></i>
+                    達成報酬を選ぶ (景品一覧)
+                </button>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-6" id="stamp-grid"></div>
+            <button class="w-full bg-secondary text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-orange-500 transition active:scale-95 flex items-center justify-center space-x-2 mb-8">
+                <i data-lucide="qr-code"></i>
+                <span>QRコードを読み取る</span>
+            </button>
+            <div class="mb-20">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <i data-lucide="map-pin" class="w-5 h-5 mr-2 text-primary"></i>スタンプ集めのおすすめルート
+                </h3>
+                <div class="space-y-3">
+                    <!-- ルート1: 犬山 -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-start hover:shadow-md transition cursor-pointer">
+                        <div class="bg-blue-50 p-2 rounded-lg mr-3 flex-shrink-0"><i data-lucide="map" class="w-6 h-6 text-primary"></i></div>
+                        <div class="flex-grow">
+                            <h4 class="font-bold text-gray-800">【北へ】犬山・城下町ルート</h4>
+                            <div class="text-xs text-gray-500 mt-1 space-y-0.5">
+                                <p><i data-lucide="clock" class="w-3 h-3 inline mr-1"></i>片道約50分</p>
+                                <p><i data-lucide="map-pin" class="w-3 h-3 inline mr-1"></i>犬山城、城下町</p>
+                            </div>
+                            <p class="text-xs text-secondary mt-2 font-bold border-t border-dashed border-gray-200 pt-1">特典: 食べ歩きクーポン</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-gray-300 mt-2"></i>
+                    </div>
+                    <!-- ルート2: 蒲郡 -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-start hover:shadow-md transition cursor-pointer">
+                        <div class="bg-blue-50 p-2 rounded-lg mr-3 flex-shrink-0"><i data-lucide="waves" class="w-6 h-6 text-primary"></i></div>
+                        <div class="flex-grow">
+                            <h4 class="font-bold text-gray-800">【東へ】蒲郡・ラグーナルート</h4>
+                            <div class="text-xs text-gray-500 mt-1 space-y-0.5">
+                                <p><i data-lucide="clock" class="w-3 h-3 inline mr-1"></i>片道約60分 (高速利用)</p>
+                                <p><i data-lucide="map-pin" class="w-3 h-3 inline mr-1"></i>ラグーナ、竹島水族館</p>
+                            </div>
+                            <p class="text-xs text-secondary mt-2 font-bold border-t border-dashed border-gray-200 pt-1">特典: 入館料割引</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-gray-300 mt-2"></i>
+                    </div>
+                    <!-- ルート3: 知多 -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-start hover:shadow-md transition cursor-pointer">
+                        <div class="bg-blue-50 p-2 rounded-lg mr-3 flex-shrink-0"><i data-lucide="sun" class="w-6 h-6 text-primary"></i></div>
+                        <div class="flex-grow">
+                            <h4 class="font-bold text-gray-800">【南へ】南知多・美浜ルート</h4>
+                            <div class="text-xs text-gray-500 mt-1 space-y-0.5">
+                                <p><i data-lucide="clock" class="w-3 h-3 inline mr-1"></i>片道約50分 (知多半島道路)</p>
+                                <p><i data-lucide="map-pin" class="w-3 h-3 inline mr-1"></i>南知多ビーチランド、魚太郎</p>
+                            </div>
+                            <p class="text-xs text-secondary mt-2 font-bold border-t border-dashed border-gray-200 pt-1">特典: 特産品プレゼント</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-gray-300 mt-2"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 画面：クーポン -->
+        <section id="screen-coupon" class="screen p-4">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <i data-lucide="ticket" class="mr-2 text-secondary"></i>マイクーポン
+            </h2>
+            <div class="flex mb-6 bg-gray-200 p-1 rounded-lg">
+                <button class="coupon-tab flex-1 py-2 rounded-md text-sm font-bold bg-white shadow text-primary transition" data-target="active-coupons">利用可能</button>
+                <button class="coupon-tab flex-1 py-2 rounded-md text-sm font-bold text-gray-500 transition" data-target="used-coupons">使用済み・期限切れ</button>
+            </div>
+            <div id="active-coupons" class="space-y-4"></div>
+            <div id="used-coupons" class="space-y-4 hidden opacity-60"></div>
+        </section>
+
+        <!-- 画面：お知らせ (新規追加) -->
+        <section id="screen-news" class="screen p-4">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <i data-lucide="bell" class="mr-2 text-secondary"></i>お知らせ
+            </h2>
+
+            <!-- タブ -->
+            <div class="flex overflow-x-auto space-x-2 mb-4 pb-2 no-scrollbar">
+                <button class="news-tab px-4 py-1.5 rounded-full text-sm font-bold bg-ncu-green text-white transition whitespace-nowrap" data-filter="all">すべて</button>
+                <button class="news-tab px-4 py-1.5 rounded-full text-sm font-bold bg-gray-100 text-gray-500 transition whitespace-nowrap" data-filter="app">アプリ</button>
+                <button class="news-tab px-4 py-1.5 rounded-full text-sm font-bold bg-gray-100 text-gray-500 transition whitespace-nowrap" data-filter="event">イベント</button>
+                <button class="news-tab px-4 py-1.5 rounded-full text-sm font-bold bg-gray-100 text-gray-500 transition whitespace-nowrap" data-filter="coupon">クーポン</button>
+            </div>
+
+            <!-- お知らせリスト -->
+            <div id="news-list" class="space-y-3 mb-20">
+                <!-- JSで生成 -->
+            </div>
+        </section>
+
+        <!-- 画面：マイページ -->
+        <section id="screen-mypage" class="screen p-4">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6 flex items-center space-x-4">
+                <div class="bg-gray-100 p-3 rounded-full">
+                    <i data-lucide="user" class="w-8 h-8 text-gray-400"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold">名市大 太郎</h3>
+                    <p class="text-xs text-gray-500">経済学部 / 一般会員</p>
+                </div>
+            </div>
+            <div class="space-y-2">
+                <button class="w-full flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:bg-gray-50">
+                    <span class="flex items-center text-sm font-semibold"><i data-lucide="history" class="w-4 h-4 mr-3 text-primary"></i>利用履歴</span>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300"></i>
+                </button>
+                <button class="w-full flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:bg-gray-50">
+                    <span class="flex items-center text-sm font-semibold"><i data-lucide="settings" class="w-4 h-4 mr-3 text-gray-500"></i>設定</span>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300"></i>
+                </button>
+            </div>
+            <button class="mt-8 w-full py-3 text-red-500 text-sm font-bold border border-red-100 bg-red-50 rounded-xl hover:bg-red-100">
+                ログアウト
+            </button>
         </section>
 
     </main>
 
-    <!-- フッター (アプリ内ナビゲーション) -->
-    <footer id="app-footer" class="bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        <nav class="container mx-auto px-4 py-3 flex justify-around">
-            <button class="nav-btn p-2 flex flex-col items-center text-primary" data-screen="screen-home">
+    <!-- フッターナビ (5つに拡張) -->
+    <footer id="app-footer" class="bg-white border-t border-gray-200 pb-safe">
+        <div class="container mx-auto px-1 py-2 flex justify-between">
+            <button class="nav-btn flex-1 py-1 flex flex-col items-center text-primary transition-colors" data-screen="screen-home">
                 <i data-lucide="map" class="w-6 h-6 mb-1"></i>
-                <span class="text-xs font-semibold">ホーム</span>
+                <span class="text-[10px] font-bold transform scale-90 sm:scale-100">ホーム</span>
             </button>
-            <button class="nav-btn p-2 flex flex-col items-center text-gray-500" data-screen="screen-stamp">
-                <i data-lucide="scan-line" class="w-6 h-6 mb-1"></i>
-                <span class="text-xs font-semibold">スタンプ</span>
+            <button class="nav-btn flex-1 py-1 flex flex-col items-center text-gray-400 hover:text-gray-600 transition-colors" data-screen="screen-stamp">
+                <i data-lucide="stamp" class="w-6 h-6 mb-1"></i>
+                <span class="text-[10px] font-bold transform scale-90 sm:scale-100">スタンプ</span>
             </button>
-            <button class="nav-btn p-2 flex flex-col items-center text-gray-500" data-screen="screen-mypage">
+            <button class="nav-btn flex-1 py-1 flex flex-col items-center text-gray-400 hover:text-gray-600 transition-colors" data-screen="screen-coupon">
+                <i data-lucide="ticket" class="w-6 h-6 mb-1"></i>
+                <span class="text-[10px] font-bold transform scale-90 sm:scale-100">クーポン</span>
+            </button>
+            <!-- お知らせボタン追加 -->
+            <button class="nav-btn flex-1 py-1 flex flex-col items-center text-gray-400 hover:text-gray-600 transition-colors" data-screen="screen-news">
+                <i data-lucide="bell" class="w-6 h-6 mb-1"></i>
+                <span class="text-[10px] font-bold transform scale-90 sm:scale-100">お知らせ</span>
+            </button>
+            <button class="nav-btn flex-1 py-1 flex flex-col items-center text-gray-400 hover:text-gray-600 transition-colors" data-screen="screen-mypage">
                 <i data-lucide="user" class="w-6 h-6 mb-1"></i>
-                <span class="text-xs font-semibold">マイページ</span>
+                <span class="text-[10px] font-bold transform scale-90 sm:scale-100">マイページ</span>
             </button>
-        </nav>
+        </div>
     </footer>
 
-    <!-- ===== モーダルエリア ===== -->
-    
-    <!-- 画面1：ログイン / 新規登録 (モーダル) -->
-    <div id="modal-login" class="modal">
-        <div class="modal-content p-6">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-ncu-green">ログイン</h2>
-                <button onclick="closeModal('modal-login')"><i data-lucide="x" class="w-6 h-6"></i></button>
-            </div>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-semibold mb-1">メールアドレス</label>
-                    <input type="email" placeholder="xxx@nagoya-cu.ac.jp" class="w-full p-3 border rounded-lg">
-                </div>
-                <div>
-                    <label class="block text-sm font-semibold mb-1">パスワード</label>
-                    <input type="password" class="w-full p-3 border rounded-lg">
-                </div>
-                <button class="w-full bg-ncu-green text-white font-bold py-3 rounded-lg">ログイン</button>
-                <div class="text-center space-y-2 pt-2">
-                    <a href="#" class="text-sm text-primary hover:underline">新規会員登録はこちら</a>
-                    <br>
-                    <a href="#" class="text-sm text-gray-500 hover:underline">パスワードを忘れた場合</a>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- ===== モーダル ===== -->
 
-    <!-- 画面3：車両詳細 / 予約 (モーダル) -->
-    <div id="modal-vehicle-detail" class="modal">
-        <div class="modal-content">
-            <div class="relative">
-                <img src="https://placehold.co/500x300/00A7C7/FFFFFF?text=アクア" alt="アクア" class="w-full rounded-t-lg">
-                <button onclick="closeModal('modal-vehicle-detail')" class="absolute top-3 right-3 bg-black bg-opacity-50 text-white rounded-full p-1">
+    <!-- お知らせ詳細モーダル -->
+    <div id="modal-news-detail" class="modal">
+        <div class="modal-content p-6">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <span id="news-modal-category" class="text-xs font-bold px-2 py-1 rounded text-white bg-gray-500">APP</span>
+                    <span id="news-modal-date" class="text-xs text-gray-400 ml-2">2023/11/25</span>
+                </div>
+                <button onclick="closeModal('modal-news-detail')" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
-            <div class="p-6">
-                <h2 class="text-2xl font-bold mb-2">トヨタ アクア</h2>
-                <p class="text-gray-600 mb-4">滝子キャンパス・ステーション</p>
-                <div class="flex space-x-4 mb-4 text-sm text-gray-700">
-                    <span><i data-lucide="navigation" class="w-4 h-4 inline-block mr-1"></i> ナビ</span>
-                    <span><i data-lucide="credit-card" class="w-4 h-4 inline-block mr-1"></i> ETC</span>
-                </div>
-                
-                <h3 class="text-lg font-semibold mb-3">料金プラン選択</h3>
-                <div class="space-y-3 mb-6">
-                    <label class="block p-4 border rounded-lg cursor-pointer hover:border-primary">
-                        <input type="radio" name="plan" class="mr-2">
-                        <strong>6時間パック:</strong> <span class="text-lg font-bold text-primary">2,200円</span> (推奨)
-                    </label>
-                    <label class="block p-4 border rounded-lg cursor-pointer hover:border-primary">
-                        <input type="radio" name="plan" class="mr-2">
-                        <strong>12時間パック:</strong> <span class="text-lg font-bold">2,900円</span>
-                    </label>
-                    <label class="block p-4 border rounded-lg cursor-pointer hover:border-primary">
-                        <input type="radio" name="plan" class="mr-2">
-                        <strong>1時間:</strong> <span class="text-lg font-bold">500円</span>
-                    </label>
-                </div>
-                <button class="w-full bg-secondary text-white font-bold text-lg py-3 rounded-lg"
-                        onclick="showModal('modal-booking-confirm'); closeModal('modal-vehicle-detail')">
-                    この内容で予約する
-                </button>
+            <h3 id="news-modal-title" class="text-lg font-bold text-gray-800 mb-4 leading-tight">タイトル</h3>
+            <div id="news-modal-content" class="text-sm text-gray-600 leading-relaxed space-y-2 mb-6">
+                <!-- 内容 -->
             </div>
+            <button onclick="closeModal('modal-news-detail')" class="w-full bg-gray-100 text-gray-600 font-bold py-3 rounded-lg hover:bg-gray-200">閉じる</button>
         </div>
     </div>
 
-    <!-- 画面4：予約完了 / 利用中 (モーダル) -->
-    <div id="modal-booking-confirm" class="modal">
+    <!-- (既存のモーダル群) -->
+    <div id="modal-rewards" class="modal">
+        <div class="modal-content p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center"><i data-lucide="gift" class="mr-2 text-secondary"></i>達成報酬カタログ</h3>
+                <button onclick="closeModal('modal-rewards')" class="text-gray-500 bg-gray-100 rounded-full p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <p class="text-sm text-gray-600 mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200">スタンプを9個集めると、以下のリストから<span class="font-bold text-yellow-700">お好きな景品を1つ</span>お選びいただけます！</p>
+            <div class="space-y-3" id="reward-list"></div>
+            <div class="mt-6 text-center"><button onclick="closeModal('modal-rewards')" class="w-full bg-gray-200 text-gray-600 font-bold py-3 rounded-xl">閉じる</button></div>
+        </div>
+    </div>
+
+    <div id="modal-use-coupon" class="modal">
         <div class="modal-content p-6 text-center">
-            <button onclick="closeModal('modal-booking-confirm')" class="absolute top-3 right-3 text-gray-500">
-                <i data-lucide="x" class="w-6 h-6"></i>
-            </button>
-            <i data-lucide="check-circle" class="w-20 h-20 text-green-500 mx-auto mb-4"></i>
-            <h2 class="text-2xl font-bold mb-4">予約が完了しました！</h2>
-            <p class="text-gray-600 mb-6">利用時間になりましたら、以下の暗証番号でキーボックスを開けてください。</p>
-            
-            <div class="bg-gray-100 p-6 rounded-lg mb-6">
-                <p class="text-sm text-gray-500">キーボックス暗証番号</p>
-                <p class="text-4xl font-bold tracking-widest text-gray-800 my-2">1 2 3 4</p>
+            <h2 class="text-xl font-bold mb-4 text-gray-800">クーポンを使用しますか？</h2>
+            <div class="bg-yellow-50 p-4 rounded-lg mb-6 border border-yellow-200">
+                <p id="modal-coupon-title" class="font-bold text-lg text-yellow-700 mb-1">クーポン名</p>
+                <p class="text-sm text-yellow-600">この操作は取り消せません</p>
             </div>
-            
-            <button class="w-full bg-primary text-white font-bold py-3 rounded-lg mb-3">利用を開始する</button>
-            <button class="w-full text-sm text-red-600">予約をキャンセルする</button>
+            <div class="flex space-x-3">
+                <button onclick="closeModal('modal-use-coupon')" class="flex-1 bg-gray-200 text-gray-700 font-bold py-3 rounded-lg">キャンセル</button>
+                <button id="btn-confirm-use-coupon" class="flex-1 bg-primary text-white font-bold py-3 rounded-lg shadow">使用する</button>
+            </div>
         </div>
     </div>
 
+    <div id="modal-calendar" class="modal">
+        <div class="modal-content p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">月間予約状況</h3>
+                <button onclick="closeModal('modal-calendar')" class="text-gray-500 bg-gray-100 rounded-full p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="mb-4">
+                <label class="block text-xs font-bold text-gray-500 mb-1">確認する車両</label>
+                <select id="calendar-car-select" class="w-full p-2 border border-gray-300 rounded-lg bg-white font-bold" onchange="renderCalendar()"></select>
+            </div>
+            <div class="mb-2 text-center font-bold text-lg" id="calendar-month-label"></div>
+            <div class="grid grid-cols-7 gap-1 mb-1 text-center text-xs text-gray-500 font-bold">
+                <div class="text-red-500">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div class="text-blue-500">土</div>
+            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+            <div class="flex justify-center gap-4 mt-4 text-xs text-gray-500">
+                <span class="flex items-center"><span class="status-ok mr-1">◎</span>余裕あり</span><span class="flex items-center"><span class="status-few mr-1">△</span>残りわずか</span><span class="flex items-center"><span class="status-full mr-1">×</span>満車</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-booking-wizard" class="modal">
+        <div class="modal-content">
+            <div class="relative h-32 bg-gray-200">
+                <img id="wizard-car-img" src="" alt="Vehicle" class="w-full h-full object-cover">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                <button class="close-modal absolute top-4 right-4 bg-black/50 text-white rounded-full p-1.5 backdrop-blur-sm z-10"><i data-lucide="x" class="w-5 h-5"></i></button>
+                <div class="absolute bottom-3 left-4 text-white"><h2 id="wizard-car-name" class="text-xl font-bold leading-tight">Car Name</h2></div>
+            </div>
+            <div class="p-5">
+                <div class="flex items-center justify-between mb-6 px-2">
+                    <div class="flex flex-col items-center"><div id="step-dot-1" class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">1</div><span class="text-[10px] mt-1 text-gray-500 font-bold">料金</span></div>
+                    <div class="flex-1 h-0.5 bg-gray-200 mx-2"></div>
+                    <div class="flex flex-col items-center"><div id="step-dot-2" class="w-8 h-8 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center font-bold text-sm">2</div><span class="text-[10px] mt-1 text-gray-500 font-bold">日時</span></div>
+                    <div class="flex-1 h-0.5 bg-gray-200 mx-2"></div>
+                    <div class="flex flex-col items-center"><div id="step-dot-3" class="w-8 h-8 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center font-bold text-sm">3</div><span class="text-[10px] mt-1 text-gray-500 font-bold">完了</span></div>
+                </div>
+                <div id="step-content-1">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4">プランを選んでください</h3>
+                    <div class="space-y-3 mb-6">
+                        <label class="relative flex items-center justify-between p-4 border-2 border-primary bg-blue-50 rounded-xl cursor-pointer hover:bg-blue-100 transition shadow-sm group">
+                            <div class="flex items-center"><input type="radio" name="plan" value="2" checked class="w-5 h-5 text-primary border-gray-300 focus:ring-primary cursor-pointer"><div class="ml-3"><span class="block text-base font-bold text-gray-800">2時間パック</span><span class="block text-xs text-gray-500 group-hover:text-gray-700">ちょい乗りに最適</span></div></div><span class="text-xl font-bold text-primary">¥800</span>
+                        </label>
+                        <label class="relative flex items-center justify-between p-4 border-2 border-gray-200 bg-white rounded-xl cursor-pointer hover:border-primary hover:bg-blue-50 transition shadow-sm group">
+                            <div class="flex items-center"><input type="radio" name="plan" value="6" class="w-5 h-5 text-primary border-gray-300 focus:ring-primary cursor-pointer"><div class="ml-3"><span class="block text-base font-bold text-gray-800">6時間パック</span><span class="block text-xs text-gray-500 group-hover:text-gray-700">買い物や遠出に</span></div></div><span class="text-xl font-bold text-primary">¥2,000</span>
+                        </label>
+                    </div>
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-6 flex items-start"><i data-lucide="alert-circle" class="w-5 h-5 text-red-500 mr-2 flex-shrink-0 mt-0.5"></i><div><p class="text-sm font-bold text-red-600">ご注意ください</p><p class="text-xs text-red-600 leading-relaxed">上記パック料金に加え、従量課金として<br><span class="font-bold underline text-sm">1kmあたり40円</span> が別途加算されます。</p></div></div>
+                    <button onclick="goToStep(2)" class="w-full bg-primary text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-primary-dark transition flex items-center justify-center">次へ進む</button>
+                </div>
+                <div id="step-content-2" class="hidden">
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">いつ利用しますか？</h3>
+                    <div class="mb-4">
+                        <div class="flex justify-between items-end mb-1"><span class="text-xs font-bold text-gray-500">本日の予約状況 (0:00 - 24:00)</span><div class="flex items-center text-[10px] space-x-2"><span class="flex items-center"><span class="w-2 h-2 bg-red-500 rounded-sm mr-1"></span>予約済</span><span class="flex items-center"><span class="w-2 h-2 bg-blue-500 rounded-sm mr-1"></span>選択中</span></div></div>
+                        <div id="schedule-bar-container" class="schedule-bar border border-gray-300"></div>
+                        <div class="relative h-4 w-full mt-1"><span class="schedule-label" style="left: 0%">0時</span><span class="schedule-label" style="left: 25%">6時</span><span class="schedule-label" style="left: 50%">12時</span><span class="schedule-label" style="left: 75%">18時</span><span class="schedule-label" style="left: 100%">24時</span></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <button id="btn-now" class="border-2 border-secondary bg-orange-50 p-3 rounded-lg text-center hover:bg-orange-100 transition active:scale-95"><i data-lucide="zap" class="w-6 h-6 text-secondary mx-auto mb-1"></i><span class="block text-sm font-bold text-secondary">今すぐ借りる</span></button>
+                        <button id="btn-later" class="border-2 border-gray-200 bg-white p-3 rounded-lg text-center hover:bg-gray-50 transition active:scale-95"><i data-lucide="calendar-clock" class="w-6 h-6 text-gray-400 mx-auto mb-1"></i><span class="block text-sm font-bold text-gray-600">日時を指定</span></button>
+                    </div>
+                    <div id="custom-time-input" class="hidden mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200"><label class="block text-xs font-bold text-gray-500 mb-1">開始日時</label><input type="datetime-local" id="input-start-time" class="w-full p-2 border border-gray-300 rounded-lg text-sm"></div>
+                    <div class="bg-blue-50 p-3 rounded-lg mb-6"><div class="flex justify-between text-sm mb-1"><span class="text-gray-500">利用開始</span><span id="wizard-start-time" class="font-bold">--:--</span></div><div class="flex justify-between text-sm"><span class="text-gray-500">利用終了(予定)</span><span id="wizard-end-time" class="font-bold">--:--</span></div></div>
+                    <div class="flex space-x-3"><button onclick="goToStep(1)" class="w-1/3 bg-gray-200 text-gray-600 font-bold py-3.5 rounded-xl hover:bg-gray-300 transition">戻る</button><button onclick="confirmBooking()" class="w-2/3 bg-secondary text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-orange-600 transition">予約を確定する</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-success" class="modal">
+        <div class="modal-content p-8 text-center rounded-xl">
+            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce"><i data-lucide="check" class="w-10 h-10 text-green-600"></i></div>
+            <h2 class="text-2xl font-bold mb-2 text-gray-800">予約完了！</h2>
+            <p class="text-sm text-gray-500 mb-8">予約が確定しました。<br>利用開始時間になりましたら解錠してください。</p>
+            <div class="bg-gray-50 p-6 rounded-2xl border border-gray-200 mb-8 relative overflow-hidden"><div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-secondary"></div><p class="text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">Unlock Code</p><p class="text-4xl font-mono font-bold text-gray-800 tracking-[0.2em] ml-2">8931</p></div>
+            <button onclick="finishBookingProcess()" class="w-full bg-gray-800 text-white font-bold py-3.5 rounded-xl hover:bg-gray-900 transition">閉じる</button>
+        </div>
+    </div>
+
+    <div id="modal-return" class="modal">
+        <div class="modal-content p-6 text-center">
+            <h2 class="text-xl font-bold mb-4">返却手続き</h2>
+            <p class="text-gray-600 mb-6 text-sm">元の場所（滝子キャンパス）に駐車しましたか？<br>車内の忘れ物をご確認ください。</p>
+            <div class="flex space-x-3"><button onclick="closeModal('modal-return')" class="flex-1 bg-gray-200 text-gray-700 font-bold py-3 rounded-lg">キャンセル</button><button onclick="completeReturn()" class="flex-1 bg-primary text-white font-bold py-3 rounded-lg shadow">返却する</button></div>
+        </div>
+    </div>
+
+    <div id="modal-return-success" class="modal">
+        <div class="modal-content p-8 text-center">
+            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="thumbs-up" class="w-8 h-8 text-primary"></i></div>
+            <h2 class="text-xl font-bold mb-2">返却完了！</h2>
+            <p class="text-sm text-gray-500 mb-4">ご利用ありがとうございました。<br>またのご利用をお待ちしています。</p>
+            <p class="text-xs text-gray-400">※ 料金は登録カードから決済されます</p>
+            <button onclick="closeModal('modal-return-success')" class="mt-6 w-full bg-gray-800 text-white font-bold py-3 rounded-lg">閉じる</button>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
+        // --- 1. データ定義 ---
+
+        // お知らせデータ
+        const NEWS_DATA = [
+            { id: 1, date: '2023/11/25', category: 'app', title: 'アプリアップデートのお知らせ (Ver10.0)', content: 'いつもご利用ありがとうございます。\n新機能「お知らせ」タブを追加しました。\nまた、予約フローの改善を行いました。\n今後ともよろしくお願いいたします。' },
+            { id: 2, date: '2023/11/20', category: 'event', title: '【犬山観光協会】秋の城下町まつり開催中！', content: '犬山城下町にて秋のイベントが開催中です。\n当アプリのスタンプラリー対象スポットにもなっておりますので、ぜひドライブでお出かけください！\n\n期間：11/20〜11/30' },
+            { id: 3, date: '2023/11/18', category: 'coupon', title: '新しいクーポン「生協割引」が追加されました', content: 'スタンプラリーの報酬として「生協割引」が選べるようになりました。\nまた、配布クーポンとして「初回利用割引」も実施中です。' },
+            { id: 4, date: '2023/11/15', category: 'event', title: '【蒲郡】ラグーナ・イルミネーション開始', content: '冬のラグーナテンボスはイルミネーションが綺麗です。\n夜のドライブデートにいかがでしょうか。' }
+        ];
+
+        const STAMP_DATA = [
+            { id: 1, earned: true, date: '11/02' },
+            { id: 2, earned: true, date: '11/15' },
+            { id: 3, earned: false, date: null },
+            { id: 4, earned: false, date: null },
+            { id: 5, earned: false, date: null },
+            { id: 6, earned: false, date: null },
+            { id: 7, earned: false, date: null },
+            { id: 8, earned: false, date: null },
+            { id: 9, earned: false, date: null }
+        ];
+        
+        // 報酬データ (3つ)
+        const REWARD_DATA = [
+            { id: 1, name: "生協割引", icon: "shopping-basket", desc: "学内の生協食堂・売店で利用可能" },
+            { id: 2, name: "2時間パック無料", icon: "clock", desc: "次回の利用時に2時間パックが無料" },
+            { id: 3, name: "6時間パック半額", icon: "percent", desc: "次回の利用時に6時間パックが50%OFF" }
+        ];
+        
+        // クーポンデータ
+        const COUPON_DATA = [
+            { id: 1, title: "初回利用割引", discount: "500円OFF", desc: "初回利用限定", expire: "2025/12/31", status: "active" },
+            { id: 2, title: "犬山食べ歩き", discount: "クーポン券", desc: "犬山城下町対象店舗", expire: "2025/03/31", status: "active" },
+            { id: 3, title: "誕生日クーポン", discount: "20%OFF", desc: "お誕生日月限定", expire: "2025/01/31", status: "active" },
+            { id: 4, title: "長時間パック割", discount: "10%OFF", desc: "6時間以上のご利用で適用", expire: "2024/11/01", status: "used" }
+        ];
+
+        // 車両データ
+        const CAR_DATA = [
+            {
+                id: 1,
+                name: "ダイハツ ミライース (A)",
+                location: "滝子キャンパス・東駐輪場横",
+                image: "https://placehold.co/400x250/00A7C7/FFFFFF?text=MIRA+A",
+                status: "available",
+                capacity: 4,
+                schedule: [[10, 13]]
+            },
+            {
+                id: 2,
+                name: "ダイハツ ミライース (B)",
+                location: "滝子キャンパス・正門ロータリー",
+                image: "https://placehold.co/400x250/0089A1/FFFFFF?text=MIRA+B",
+                status: "available",
+                capacity: 4,
+                schedule: [] 
+            },
+            {
+                id: 3,
+                name: "トヨタ アクア",
+                location: "滝子キャンパス・東駐輪場横",
+                image: "https://placehold.co/400x250/F5A623/FFFFFF?text=AQUA",
+                status: "booked", 
+                capacity: 5,
+                schedule: [[0, 24]]
+            },
+            {
+                id: 4,
+                name: "トヨタ ヴォクシー",
+                location: "滝子キャンパス・部室棟付近",
+                image: "https://placehold.co/400x250/006A5C/FFFFFF?text=VOXY",
+                status: "available",
+                capacity: 8,
+                schedule: [[14, 18], [20, 22]]
+            }
+        ];
+
+        const SPONSOR_DATA = [
+            { name: "名市大 滝子キャンパス (出発地)", lat: 35.1385, lng: 136.9325, type: "campus" },
+            { name: "熱田イオンモール", lat: 35.1332, lng: 136.9056, type: "spot" },
+            { name: "コメダ珈琲店 (桜山店)", lat: 35.1415, lng: 136.9335, type: "cafe" },
+            { name: "ラウンドワン (千種店)", lat: 35.1675, lng: 136.9230, type: "leisure" },
+            { name: "ラウンドワン (中川1号線店)", lat: 35.1270, lng: 136.8655, type: "leisure" },
+            { name: "大須・栄エリア (飲食・カフェ)", lat: 35.1598, lng: 136.9000, type: "spot" },
+            { name: "犬山観光協会 (犬山城)", lat: 35.3886, lng: 136.9392, type: "tourism" },
+            { name: "蒲郡市観光協会 (ラグーナ)", lat: 34.8085, lng: 137.2724, type: "tourism" },
+            { name: "知多半島観光協会 (南知多)", lat: 34.7175, lng: 136.9450, type: "tourism" }
+        ];
+
+        let state = {
+            selectedCar: null,
+            startTime: new Date(),
+            planHours: 2,
+            activeBooking: null,
+            currentMonth: new Date(),
+            selectedCoupon: null
+        };
+
+        // --- 2. 初期化 ---
         document.addEventListener("DOMContentLoaded", () => {
-            // Lucideアイコンの初期化
             lucide.createIcons();
-
-            const navButtons = document.querySelectorAll('.nav-btn');
-            const screens = document.querySelectorAll('.screen');
-            const modals = document.querySelectorAll('.modal');
-
-            // --- フッターナビゲーション (画面切り替え) ---
-            navButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    const targetScreenId = button.dataset.screen;
-
-                    // 全ての画面を非表示
-                    screens.forEach(screen => {
-                        screen.classList.remove('active');
-                    });
-                    // 対象の画面を表示
-                    document.getElementById(targetScreenId).classList.add('active');
-
-                    // ボタンのアクティブ状態を切り替え
-                    navButtons.forEach(btn => btn.classList.add('text-gray-500'));
-                    navButtons.forEach(btn => btn.classList.remove('text-primary'));
-                    button.classList.add('text-primary');
-                    button.classList.remove('text-gray-500');
-                });
-            });
-
-            // --- モーダル (ログイン/詳細/予約) ---
-            // ログインボタン
-            document.getElementById('login-nav-btn').addEventListener('click', () => {
-                showModal('modal-login');
-            });
+            initMap();
+            renderCars();
+            renderCoupons();
+            renderRewards();
+            setupNavigation();
+            setupInteractions();
+            renderStamps();
+            renderWeeklySchedule(); 
+            renderNews(); // お知らせ描画
             
-            // モーダルを閉じる (背景クリック)
-            modals.forEach(modal => {
-                modal.addEventListener('click', (e) => {
-                    if (e.target === modal) {
-                        closeModal(modal.id);
-                    }
-                });
-            });
-
-            // --- ホーム画面 (車両/協賛店タブ) ---
-            const homeTabs = document.querySelectorAll('.tab-btn');
-            const mapContents = document.querySelectorAll('.map-content');
-
-            homeTabs.forEach(tab => {
-                tab.addEventListener('click', () => {
-                    const targetMapId = tab.dataset.target;
-                    
-                    mapContents.forEach(content => content.classList.add('hidden'));
-                    document.getElementById(targetMapId).classList.remove('hidden');
-
-                    homeTabs.forEach(t => t.classList.remove('bg-white', 'shadow', 'font-semibold'));
-                    homeTabs.forEach(t => t.classList.add('text-gray-600'));
-                    tab.classList.add('bg-white', 'shadow', 'font-semibold');
-                    tab.classList.remove('text-gray-600');
-                });
-            });
-
-             // --- スタンプラリー画面 (台紙/リストタブ) ---
-            const stampTabs = document.querySelectorAll('.stamp-tab-btn');
-            const stampContents = document.querySelectorAll('.stamp-content');
-
-            stampTabs.forEach(tab => {
-                tab.addEventListener('click', () => {
-                    const targetContentId = tab.dataset.target;
-                    
-                    stampContents.forEach(content => content.classList.add('hidden'));
-                    document.getElementById(targetContentId).classList.remove('hidden');
-
-                    stampTabs.forEach(t => t.classList.remove('bg-white', 'shadow', 'font-semibold'));
-                    stampTabs.forEach(t => t.classList.add('text-gray-600'));
-                    tab.classList.add('bg-white', 'shadow', 'font-semibold');
-                    tab.classList.remove('text-gray-600');
-                });
-            });
-
+            const now = new Date();
+            now.setMinutes(Math.ceil(now.getMinutes() / 30) * 30, 0, 0); 
+            document.getElementById('input-start-time').value = toLocalISOString(now);
         });
 
-        // --- グローバル関数 (モーダル制御) ---
-        function showModal(modalId) {
-            document.getElementById(modalId).classList.add('active');
+        function toLocalISOString(date) {
+            const pad = (num) => (num < 10 ? '0' : '') + num;
+            return date.getFullYear() +
+                '-' + pad(date.getMonth() + 1) +
+                '-' + pad(date.getDate()) +
+                'T' + pad(date.getHours()) +
+                ':' + pad(date.getMinutes());
         }
 
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.remove('active');
+        // --- 3. マップ ---
+        let map;
+        function initMap() {
+            map = L.map('map-container').setView([35.1385, 136.9325], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+
+            SPONSOR_DATA.forEach(spot => {
+                let color = '#00A7C7';
+                if(spot.type === 'campus') color = '#006A5C';
+                if(spot.type === 'tourism') color = '#F5A623';
+                if(spot.type === 'leisure') color = '#E11D48';
+
+                const customIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="background-color:${color}; width:20px; height:20px; border-radius:50%; border:2px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>`,
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                });
+
+                const marker = L.marker([spot.lat, spot.lng], {icon: customIcon}).addTo(map);
+                marker.bindPopup(`<b>${spot.name}</b><br><span style="font-size:0.8em; color:#666;">${spot.type === 'campus' ? '出発地' : 'ドライブスポット'}</span>`);
+            });
+        }
+
+        // --- 4. クーポン機能 ---
+        function renderCoupons() {
+            const activeContainer = document.getElementById('active-coupons');
+            const usedContainer = document.getElementById('used-coupons');
+            activeContainer.innerHTML = '';
+            usedContainer.innerHTML = '';
+
+            COUPON_DATA.forEach(coupon => {
+                const isActive = coupon.status === 'active';
+                const el = document.createElement('div');
+                el.className = `coupon-ticket bg-white flex rounded-lg overflow-hidden border border-gray-100 shadow-sm min-h-[100px]`;
+                
+                el.innerHTML = `
+                    <div class="w-1/3 bg-gray-50 flex flex-col items-center justify-center p-2 border-r border-dashed border-gray-300 relative">
+                        <span class="text-xl font-bold text-ncu-green text-center leading-tight">${coupon.discount}</span>
+                    </div>
+                    <div class="w-2/3 p-3 flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-gray-800">${coupon.title}</h4>
+                            <p class="text-xs text-gray-500">${coupon.desc}</p>
+                        </div>
+                        <div class="flex justify-between items-end mt-2">
+                            <span class="text-[10px] text-gray-400">有効期限: ${coupon.expire}</span>
+                            ${isActive 
+                                ? `<button onclick="confirmUseCoupon(${coupon.id})" class="text-xs bg-secondary text-white font-bold px-3 py-1.5 rounded-full shadow hover:bg-opacity-90 transition">使う</button>`
+                                : `<span class="text-xs bg-gray-200 text-gray-500 font-bold px-3 py-1 rounded-full">使用済</span>`
+                            }
+                        </div>
+                    </div>
+                `;
+
+                if(isActive) activeContainer.appendChild(el);
+                else usedContainer.appendChild(el);
+            });
+        }
+
+        window.confirmUseCoupon = function(id) {
+            const coupon = COUPON_DATA.find(c => c.id === id);
+            state.selectedCoupon = coupon;
+            document.getElementById('modal-coupon-title').innerText = coupon.title;
+            document.getElementById('modal-use-coupon').classList.add('active');
+        }
+
+        // --- 5. 車両リスト描画 ---
+        function renderCars() {
+            const container = document.getElementById('car-list-container');
+            container.innerHTML = '';
+
+            CAR_DATA.forEach(car => {
+                const isAvailable = car.status === 'available';
+                const card = document.createElement('div');
+                card.className = `bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-4 transition ${!isAvailable ? 'opacity-60 bg-gray-50' : 'hover:shadow-md'}`;
+                
+                let buttonHtml = isAvailable 
+                    ? `<button class="open-modal-btn w-full mt-2 sm:mt-0 bg-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-primary-dark transition shadow-sm flex items-center justify-center">
+                         借りる
+                       </button>`
+                    : `<button disabled class="w-full mt-2 sm:mt-0 bg-gray-300 text-white font-bold py-2 px-4 rounded-lg cursor-not-allowed">
+                         予約済み
+                       </button>`;
+
+                const statusBadge = isAvailable
+                    ? `<span class="inline-flex items-center text-ncu-green font-bold text-sm bg-green-50 px-2 py-0.5 rounded"><i data-lucide="check-circle-2" class="w-4 h-4 mr-1"></i>貸出可能</span>`
+                    : `<span class="inline-flex items-center text-red-500 font-bold text-sm bg-red-50 px-2 py-0.5 rounded"><i data-lucide="x-circle" class="w-4 h-4 mr-1"></i>貸出不可</span>`;
+
+                card.innerHTML = `
+                    <div class="relative w-full sm:w-32 h-32 sm:h-24 flex-shrink-0">
+                        <img src="${car.image}" class="w-full h-full object-cover rounded-lg bg-gray-200">
+                        ${!isAvailable ? '<div class="absolute inset-0 bg-black/10 rounded-lg flex items-center justify-center"><span class="bg-black/60 text-white text-xs px-2 py-1 rounded">利用中</span></div>' : ''}
+                    </div>
+                    <div class="flex-grow flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start">
+                                <h4 class="font-bold text-lg text-gray-800 leading-tight">${car.name}</h4>
+                            </div>
+                            <div class="mt-2">${statusBadge}</div>
+                        </div>
+                        <div class="mt-3 flex items-center justify-between">
+                             <span class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">${car.capacity}人乗り</span>
+                             ${buttonHtml}
+                        </div>
+                    </div>
+                `;
+
+                if (isAvailable) {
+                    const btn = card.querySelector('.open-modal-btn');
+                    btn.onclick = () => openWizard(car);
+                }
+                container.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        // --- 6. スケジュール系（週間・月間） ---
+        function getRandomStatus(biasToEmpty = true) {
+            const r = Math.random();
+            if (biasToEmpty) {
+                if(r > 0.8) return 'full';
+                if(r > 0.6) return 'few';
+                return 'ok';
+            } else {
+                if(r > 0.5) return 'full';
+                if(r > 0.2) return 'few';
+                return 'ok';
+            }
+        }
+
+        function getStatusHtml(status) {
+            if(status === 'ok') return '<span class="status-ok">◎</span>';
+            if(status === 'few') return '<span class="status-few">△</span>';
+            return '<span class="status-full">×</span>';
+        }
+
+        function renderWeeklySchedule() {
+            const headerRow = document.getElementById('weekly-header-row');
+            const bodyRows = document.getElementById('weekly-body-rows');
+            
+            let headerHtml = '<th class="pb-2 text-left pl-2 font-normal text-xs w-24 sticky left-0 bg-white shadow-sm z-10">車両</th>';
+            const today = new Date();
+            const days = ['日', '月', '火', '水', '木', '金', '土'];
+            
+            for(let i=0; i<7; i++) {
+                const d = new Date(today);
+                d.setDate(today.getDate() + i);
+                const dayStr = `${d.getMonth()+1}/${d.getDate()}`;
+                const weekStr = days[d.getDay()];
+                const colorClass = d.getDay() === 0 ? 'text-red-500' : (d.getDay() === 6 ? 'text-blue-500' : '');
+                headerHtml += `<th class="pb-2 font-normal text-xs min-w-[40px] ${colorClass}">${dayStr}<br>(${weekStr})</th>`;
+            }
+            headerRow.innerHTML = headerHtml;
+
+            let bodyHtml = '';
+            CAR_DATA.forEach((car) => {
+                let rowHtml = `<tr class="border-b border-gray-50 last:border-0 h-10">`;
+                rowHtml += `<td class="text-left pl-2 text-xs font-bold sticky left-0 bg-white shadow-sm z-10 truncate max-w-[90px]">${car.name.replace('ダイハツ ','').replace('トヨタ ','')}</td>`;
+                
+                for(let i=0; i<7; i++) {
+                    const isWeekend = (new Date().getDay() + i) % 7 === 0 || (new Date().getDay() + i) % 7 === 6;
+                    const status = getRandomStatus(!isWeekend);
+                    rowHtml += `<td>${getStatusHtml(status)}</td>`;
+                }
+                rowHtml += `</tr>`;
+                bodyHtml += rowHtml;
+            });
+            bodyRows.innerHTML = bodyHtml;
+        }
+
+        function openMonthlyCalendar() {
+            const select = document.getElementById('calendar-car-select');
+            select.innerHTML = '';
+            CAR_DATA.forEach(car => {
+                const opt = document.createElement('option');
+                opt.value = car.id;
+                opt.innerText = car.name;
+                select.appendChild(opt);
+            });
+            renderCalendar();
+            document.getElementById('modal-calendar').classList.add('active');
+        }
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+            
+            const now = state.currentMonth;
+            document.getElementById('calendar-month-label').innerText = `${now.getFullYear()}年${now.getMonth()+1}月`;
+
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            
+            for(let i=0; i<firstDay.getDay(); i++) {
+                const empty = document.createElement('div');
+                grid.appendChild(empty);
+            }
+
+            const today = new Date();
+            for(let d=1; d<=lastDay.getDate(); d++) {
+                const cellDate = new Date(now.getFullYear(), now.getMonth(), d);
+                const isToday = cellDate.getDate() === today.getDate() && cellDate.getMonth() === today.getMonth();
+                const isWeekend = cellDate.getDay() === 0 || cellDate.getDay() === 6;
+                const status = getRandomStatus(!isWeekend);
+
+                const cell = document.createElement('div');
+                cell.className = `calendar-cell bg-gray-50 ${isToday ? 'today' : ''}`;
+                cell.innerHTML = `
+                    <span class="${cellDate.getDay()===0?'text-red-500':(cellDate.getDay()===6?'text-blue-500':'text-gray-700')}">${d}</span>
+                    <div class="status-mark">${getStatusHtml(status)}</div>
+                `;
+                grid.appendChild(cell);
+            }
+        }
+
+        // --- 7. 予約ウィザード & ナビゲーション ---
+        function openWizard(car) {
+            state.selectedCar = car;
+            const modal = document.getElementById('modal-booking-wizard');
+            document.getElementById('wizard-car-img').src = car.image;
+            document.getElementById('wizard-car-name').innerText = car.name;
+            goToStep(1);
+            const radios = document.getElementsByName('plan');
+            radios.forEach(r => {
+                if(r.value == "2") r.checked = true;
+                r.onchange = () => { updatePlanStyle(); renderScheduleBar(); updateWizardTimeDisplay(); };
+            });
+            updatePlanStyle();
+            selectTimeMode('now');
+            modal.classList.add('active');
+        }
+
+        function goToStep(step) {
+            document.getElementById('step-content-1').classList.add('hidden');
+            document.getElementById('step-content-2').classList.add('hidden');
+            document.getElementById(`step-content-${step}`).classList.remove('hidden');
+
+            const setDot = (id, active) => {
+                const el = document.getElementById(id);
+                if(active) {
+                    el.classList.add('bg-primary', 'text-white');
+                    el.classList.remove('bg-gray-200', 'text-gray-500');
+                } else {
+                    el.classList.remove('bg-primary', 'text-white');
+                    el.classList.add('bg-gray-200', 'text-gray-500');
+                }
+            };
+
+            if(step === 1) {
+                setDot('step-dot-1', true); setDot('step-dot-2', false); setDot('step-dot-3', false);
+            } else if(step === 2) {
+                setDot('step-dot-1', true); setDot('step-dot-2', true); setDot('step-dot-3', false);
+                renderScheduleBar(); updateWizardTimeDisplay();
+            }
+        }
+
+        function updatePlanStyle() {
+            const radios = document.getElementsByName('plan');
+            radios.forEach(radio => {
+                const label = radio.closest('label');
+                if (radio.checked) {
+                    label.classList.add('border-primary', 'bg-blue-50');
+                    label.classList.remove('border-gray-200', 'bg-white');
+                    state.planHours = parseInt(radio.value);
+                } else {
+                    label.classList.remove('border-primary', 'bg-blue-50');
+                    label.classList.add('border-gray-200', 'bg-white');
+                }
+            });
+        }
+
+        function setupInteractions() {
+            document.getElementById('btn-now').addEventListener('click', () => { selectTimeMode('now'); });
+            document.getElementById('btn-later').addEventListener('click', () => { selectTimeMode('later'); });
+            document.getElementById('input-start-time').addEventListener('change', () => {
+                state.startTime = new Date(document.getElementById('input-start-time').value);
+                renderScheduleBar();
+                updateWizardTimeDisplay();
+            });
+
+            document.querySelectorAll('.close-modal').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+                });
+            });
+
+            // クーポンタブ切り替え
+            document.querySelectorAll('.coupon-tab').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const target = this.dataset.target;
+                    document.getElementById('active-coupons').classList.add('hidden');
+                    document.getElementById('used-coupons').classList.add('hidden');
+                    document.getElementById(target).classList.remove('hidden');
+                    
+                    document.querySelectorAll('.coupon-tab').forEach(t => {
+                        t.classList.remove('bg-white', 'shadow', 'text-primary');
+                        t.classList.add('text-gray-500');
+                    });
+                    this.classList.add('bg-white', 'shadow', 'text-primary');
+                    this.classList.remove('text-gray-500');
+                });
+            });
+
+            // クーポン使用確定
+            document.getElementById('btn-confirm-use-coupon').addEventListener('click', () => {
+                if(state.selectedCoupon) {
+                    state.selectedCoupon.status = 'used';
+                    renderCoupons();
+                    closeModal('modal-use-coupon');
+                }
+            });
+
+            // お知らせタブ切り替え
+            document.querySelectorAll('.news-tab').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const filter = this.dataset.filter;
+                    renderNews(filter);
+                    document.querySelectorAll('.news-tab').forEach(t => {
+                        t.classList.remove('bg-ncu-green', 'text-white');
+                        t.classList.add('bg-gray-100', 'text-gray-500');
+                    });
+                    this.classList.remove('bg-gray-100', 'text-gray-500');
+                    this.classList.add('bg-ncu-green', 'text-white');
+                });
+            });
+        }
+
+        function selectTimeMode(mode) {
+            const btnNow = document.getElementById('btn-now');
+            const btnLater = document.getElementById('btn-later');
+            const inputArea = document.getElementById('custom-time-input');
+
+            if(mode === 'now') {
+                btnNow.classList.add('border-secondary', 'bg-orange-50');
+                btnNow.classList.remove('border-gray-200', 'bg-white');
+                btnNow.querySelector('span').classList.add('text-secondary');
+                btnLater.classList.remove('border-secondary', 'bg-orange-50');
+                btnLater.classList.add('border-gray-200', 'bg-white');
+                btnLater.querySelector('span').classList.remove('text-secondary');
+                inputArea.classList.add('hidden');
+                
+                const now = new Date();
+                now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0); 
+                state.startTime = now;
+            } else {
+                btnLater.classList.add('border-secondary', 'bg-orange-50');
+                btnLater.classList.remove('border-gray-200', 'bg-white');
+                btnLater.querySelector('span').classList.add('text-secondary');
+                btnNow.classList.remove('border-secondary', 'bg-orange-50');
+                btnNow.classList.add('border-gray-200', 'bg-white');
+                btnNow.querySelector('span').classList.remove('text-secondary');
+                inputArea.classList.remove('hidden');
+                const val = document.getElementById('input-start-time').value;
+                if(val) state.startTime = new Date(val);
+            }
+            renderScheduleBar();
+            updateWizardTimeDisplay();
+        }
+
+        function renderScheduleBar() {
+            const container = document.getElementById('schedule-bar-container');
+            container.innerHTML = '';
+            const totalMinutes = 24 * 60;
+            
+            state.selectedCar.schedule.forEach(range => {
+                const startMin = range[0] * 60;
+                const endMin = range[1] * 60;
+                const width = ((endMin - startMin) / totalMinutes) * 100;
+                const left = (startMin / totalMinutes) * 100;
+
+                const el = document.createElement('div');
+                el.className = 'schedule-segment booked absolute top-0 bottom-0';
+                el.style.left = `${left}%`;
+                el.style.width = `${width}%`;
+                container.appendChild(el);
+            });
+
+            const startH = state.startTime.getHours();
+            const startM = state.startTime.getMinutes();
+            const startTotalM = startH * 60 + startM;
+            const endTotalM = startTotalM + (state.planHours * 60);
+            const displayStart = Math.max(0, startTotalM);
+            const displayEnd = Math.min(totalMinutes, endTotalM);
+            
+            if(displayEnd > displayStart) {
+                const width = ((displayEnd - displayStart) / totalMinutes) * 100;
+                const left = (displayStart / totalMinutes) * 100;
+
+                const el = document.createElement('div');
+                el.className = 'schedule-segment selected absolute top-0 bottom-0';
+                el.style.left = `${left}%`;
+                el.style.width = `${width}%`;
+                container.appendChild(el);
+            }
+        }
+
+        function updateWizardTimeDisplay() {
+            const formatTime = (date) => `${date.getHours()}:${(date.getMinutes()<10?'0':'') + date.getMinutes()}`;
+            const endDate = new Date(state.startTime.getTime() + state.planHours * 60 * 60 * 1000);
+            document.getElementById('wizard-start-time').innerText = formatTime(state.startTime);
+            document.getElementById('wizard-end-time').innerText = formatTime(endDate);
+        }
+
+        function confirmBooking() {
+            document.getElementById('modal-booking-wizard').classList.remove('active');
+            setTimeout(() => { document.getElementById('modal-success').classList.add('active'); }, 300);
+        }
+
+        function finishBookingProcess() {
+            document.getElementById('modal-success').classList.remove('active');
+            const endDate = new Date(state.startTime.getTime() + state.planHours * 60 * 60 * 1000);
+            state.activeBooking = { car: state.selectedCar, endTime: endDate };
+            updateActiveBookingUI();
+            state.selectedCar.status = 'booked';
+            renderCars();
+        }
+
+        function updateActiveBookingUI() {
+            const panel = document.getElementById('active-booking-panel');
+            if(state.activeBooking) {
+                panel.classList.remove('hidden');
+                document.getElementById('active-car-name').innerText = state.activeBooking.car.name;
+                const end = state.activeBooking.endTime;
+                document.getElementById('active-end-time').innerText = `${end.getHours()}:${(end.getMinutes()<10?'0':'') + end.getMinutes()}`;
+            } else {
+                panel.classList.add('hidden');
+            }
+        }
+
+        window.openReturnModal = function() { document.getElementById('modal-return').classList.add('active'); }
+        window.closeModal = function(id) { document.getElementById(id).classList.remove('active'); }
+        window.completeReturn = function() {
+            document.getElementById('modal-return').classList.remove('active');
+            state.activeBooking.car.status = 'available';
+            state.activeBooking = null;
+            updateActiveBookingUI();
+            renderCars();
+            setTimeout(() => { document.getElementById('modal-return-success').classList.add('active'); }, 300);
+        }
+        
+        // --- 8. スタンプラリー機能 (更新) ---
+        function renderStamps() {
+            const grid = document.getElementById('stamp-grid');
+            grid.innerHTML = '';
+            
+            STAMP_DATA.forEach((stamp, index) => {
+                const div = document.createElement('div');
+                div.className = `stamp-cell aspect-square rounded-xl flex flex-col items-center justify-center border-2 ${stamp.earned ? 'bg-white border-ncu-yellow shadow-sm' : 'bg-gray-100 border-dashed border-gray-300'}`;
+                
+                if (stamp.earned) {
+                    div.innerHTML = `
+                        <i data-lucide="check-circle" class="w-8 h-8 text-ncu-yellow fill-current"></i>
+                        <span class="stamp-date">${stamp.date}</span>
+                    `;
+                } else {
+                    div.innerHTML = `<span class="text-gray-300 font-bold text-xl">${index + 1}</span>`;
+                }
+                grid.appendChild(div);
+            });
+            lucide.createIcons();
+        }
+        
+        // 報酬カタログ描画
+        function renderRewards() {
+            const list = document.getElementById('reward-list');
+            list.innerHTML = '';
+            REWARD_DATA.forEach(reward => {
+                const el = document.createElement('div');
+                el.className = 'flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition';
+                el.innerHTML = `
+                    <div class="bg-gray-100 p-2 rounded-full mr-3">
+                        <i data-lucide="${reward.icon}" class="w-5 h-5 text-gray-600"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-800 text-sm">${reward.name}</h4>
+                        <p class="text-xs text-gray-500">${reward.desc}</p>
+                    </div>
+                    <div class="ml-auto">
+                         <div class="w-5 h-5 rounded-full border-2 border-gray-300"></div>
+                    </div>
+                `;
+                list.appendChild(el);
+            });
+            lucide.createIcons();
+        }
+
+        window.openRewardModal = function() {
+            document.getElementById('modal-rewards').classList.add('active');
+        }
+
+        function setupNavigation() {
+            const navBtns = document.querySelectorAll('.nav-btn');
+            const screens = document.querySelectorAll('.screen');
+            navBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetId = btn.dataset.screen;
+                    screens.forEach(s => s.classList.remove('active'));
+                    document.getElementById(targetId).classList.add('active');
+                    navBtns.forEach(b => {
+                        b.classList.remove('text-primary');
+                        b.classList.add('text-gray-400');
+                    });
+                    btn.classList.add('text-primary');
+                    btn.classList.remove('text-gray-400');
+                    if(targetId === 'screen-home' && map) setTimeout(() => map.invalidateSize(), 300);
+                });
+            });
+        }
+
+        // --- お知らせ機能 ---
+        function renderNews(filter = 'all') {
+            const container = document.getElementById('news-list');
+            container.innerHTML = '';
+            
+            const filteredData = filter === 'all' ? NEWS_DATA : NEWS_DATA.filter(n => n.category === filter);
+            
+            filteredData.forEach(news => {
+                let categoryLabel = 'その他';
+                let categoryColor = 'bg-gray-500';
+                if (news.category === 'app') { categoryLabel = 'アプリ'; categoryColor = 'bg-blue-500'; }
+                if (news.category === 'event') { categoryLabel = 'イベント'; categoryColor = 'bg-secondary'; }
+                if (news.category === 'coupon') { categoryLabel = 'クーポン'; categoryColor = 'bg-pink-500'; }
+
+                const el = document.createElement('div');
+                el.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer';
+                el.onclick = () => openNewsModal(news);
+                el.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-xs text-white font-bold px-2 py-0.5 rounded ${categoryColor}">${categoryLabel}</span>
+                        <span class="text-xs text-gray-400">${news.date}</span>
+                    </div>
+                    <h4 class="text-sm font-bold text-gray-800 leading-snug">${news.title}</h4>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        function openNewsModal(news) {
+            const modal = document.getElementById('modal-news-detail');
+            document.getElementById('news-modal-title').innerText = news.title;
+            document.getElementById('news-modal-date').innerText = news.date;
+            document.getElementById('news-modal-content').innerText = news.content;
+            
+            let categoryLabel = 'その他';
+            let categoryColor = 'bg-gray-500';
+            if (news.category === 'app') { categoryLabel = 'APP'; categoryColor = 'bg-blue-500'; }
+            if (news.category === 'event') { categoryLabel = 'EVENT'; categoryColor = 'bg-secondary'; }
+            if (news.category === 'coupon') { categoryLabel = 'COUPON'; categoryColor = 'bg-pink-500'; }
+            
+            const catEl = document.getElementById('news-modal-category');
+            catEl.innerText = categoryLabel;
+            catEl.className = `text-xs font-bold px-2 py-1 rounded text-white ${categoryColor}`;
+
+            modal.classList.add('active');
         }
     </script>
-
 </body>
 </html>
